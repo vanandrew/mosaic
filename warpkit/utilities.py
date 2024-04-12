@@ -759,3 +759,22 @@ def compute_jacobian_determinant(displacement_field: nib.Nifti1Image) -> nib.Nif
 
     # return jacobian determinant
     return cast(nib.Nifti1Image, jacobian_determinant_image)
+
+
+def check_affines(phase, mag):
+    """Make sure affines/shapes are all correct."""
+    for p1, m1 in zip(phase, mag):
+        for p2, m2 in zip(phase, mag):
+            if not (
+                np.allclose(p1.affine, p2.affine, rtol=1e-3, atol=1e-3)
+                and np.allclose(m1.affine, m2.affine, rtol=1e-3, atol=1e-3)
+                and p1.shape == p2.shape
+                and m1.shape == m2.shape
+            ):
+                print(p1.affine, p2.affine)
+                print(p1.affine - p2.affine)
+                print(p1.shape, p2.shape)
+                print(m1.affine, m2.affine)
+                print(m1.affine - m2.affine)
+                print(m1.shape, m2.shape)
+                raise ValueError("Affines and shapes must match")

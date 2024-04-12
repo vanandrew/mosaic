@@ -19,6 +19,7 @@ from .concurrency import run_executor
 from .julia import JuliaContext
 from .model import weighted_regression
 from .utilities import (
+    check_affines,
     corr2_coeff,
     create_brain_mask,
     get_largest_connected_component,
@@ -589,57 +590,21 @@ def svd_filtering(
             field_maps[new_masks[..., i_vol] > 0, i_vol] = recon_img[new_masks[..., i_vol] > 0, i_vol]
 
 
-def unwrap_and_compute_field_maps(
+def unwrap_phase_data(
     phase: List[nib.Nifti1Image],
     mag: List[nib.Nifti1Image],
     TEs: Union[List[float], Tuple[float], npt.NDArray[np.float32]],
     mask: Union[nib.Nifti1Image, SimpleNamespace, None] = None,
     automask: bool = True,
     border_size: int = 5,
-    border_filt: Tuple[int, int] = (1, 5),
-    svd_filt: int = 10,
     frames: Union[List[int], None] = None,
     n_cpus: int = 4,
     debug: bool = False,
     wrap_limit: bool = False,
 ) -> nib.Nifti1Image:
-    """Unwrap phase of data weighted by magnitude data and compute field maps. This makes a call
-    to the ROMEO phase unwrapping algorithm for each frame. To learn more about ROMEO, see this paper:
+    # make sure affines/shapes are all correct
+    check_affines(phase, mag)
 
-    Dymerska, B., Eckstein, K., Bachrata, B., Siow, B., Trattnig, S., Shmueli, K., Robinson, S.D., 2020.
-    Phase Unwrapping with a Rapid Opensource Minimum Spanning TreE AlgOrithm (ROMEO).
-    Magnetic Resonance in Medicine. https://doi.org/10.1002/mrm.28563
-
-    Parameters
-    ----------
-    phase : List[nib.Nifti1Image]
-        Phases to unwrap
-    mag : List[nib.Nifti1Image]
-        Magnitudes associated with each phase
-    TEs : Union[List[float], Tuple[float], npt.NDArray[np.float32]]
-        Echo times associated with each phase (in ms)
-    mask : nib.Nifti1Image, optional
-        Boolean mask, by default None
-    automask : bool, optional
-        Automatically generate a mask (ignore mask option), by default True
-    border_size : int, optional
-        Size of border in automask, by default 5
-    border_filt : Tuple[int, int], optional
-        Number of SVD components for each step of border filtering, by default (1, 5)
-    svd_filt : int, optional
-        Number of SVD components to use for filtering of field maps, by default 30
-    frames : List[int], optional
-        Only process these frame indices, by default None (which means all frames)
-    n_cpus : int, optional
-        Number of CPUs to use, by default 4
-    debug : bool, optional
-        Debug mode, by default False
-
-    Returns
-    -------
-    nib.Nifti1Image
-        Field maps in Hz
-    """
     # check TEs if < 0.1, tell user they probably need to convert to ms
     if np.min(TEs) < 0.1:
         logging.warning(
@@ -649,36 +614,6 @@ def unwrap_and_compute_field_maps(
     # convert TEs to np array
     TEs = cast(npt.NDArray[np.float32], np.array(TEs))
 
-    # make sure affines/shapes are all correct
-    for p1, m1 in zip(phase, mag):
-        for p2, m2 in zip(phase, mag):
-            if not (
-                np.allclose(p1.affine, p2.affine, rtol=1e-3, atol=1e-3)
-                and np.allclose(p1.shape, p2.shape, rtol=1e-3, atol=1e-3)
-                and np.allclose(m1.affine, m2.affine, rtol=1e-3, atol=1e-3)
-                and np.allclose(m1.shape, m2.shape, rtol=1e-3, atol=1e-3)
-                and np.allclose(p1.affine, m1.affine, rtol=1e-3, atol=1e-3)
-                and np.allclose(p1.shape, m1.shape, rtol=1e-3, atol=1e-3)
-                and np.allclose(p2.affine, m2.affine, rtol=1e-3, atol=1e-3)
-                and np.allclose(p2.shape, m2.shape, rtol=1e-3, atol=1e-3)
-            ):
-                raise ValueError("Affines/Shapes of images do not all match.")
-
-    # check if data is 4D or 3D
-    if len(phase[0].shape) == 3:
-        # set total number of frames to 1
-        n_frames = 1
-        # convert data to 4D
-        phase = [nib.Nifti1Image(p.get_fdata()[..., np.newaxis], p.affine, p.header) for p in phase]
-        mag = [nib.Nifti1Image(m.get_fdata()[..., np.newaxis], m.affine, m.header) for m in mag]
-    elif len(phase[0].shape) == 4:
-        # if frames is None, set it to all frames
-        if frames is None:
-            frames = list(range(phase[0].shape[-1]))
-        # get the total number of frames
-        n_frames = len(frames)
-    else:
-        raise ValueError("Data must be 3D or 4D.")
     # frames should be a list at this point
     frames = cast(List[int], frames)
 
@@ -687,7 +622,6 @@ def unwrap_and_compute_field_maps(
         raise ValueError("Number of echo times must equal number of mag and phase images.")
 
     # allocate space for field maps and unwrapped
-    field_maps = np.zeros((*phase[0].shape[:3], n_frames), dtype=np.float32)
     unwrapped = np.zeros((*phase[0].shape[:3], len(TEs), n_frames), dtype=np.float32)
     # array for storing auto-generated masks
     new_masks = np.zeros((*mag[0].shape[:3], len(frames)), dtype=np.int8)
@@ -790,9 +724,61 @@ def unwrap_and_compute_field_maps(
         logging.info("Saving masks..")
         nib.Nifti1Image(new_masks, phase[0].affine, phase[0].header).to_filename("masks.nii")
 
+
+def compute_field_maps(
+    unwrapped: npt.NDArray[np.float32],
+    new_masks: npt.NDArray[np.int8],
+    img: nib.Nifti1Image,
+    mag: List[nib.Nifti1Image],
+    TEs: Union[List[float], Tuple[float], npt.NDArray[np.float32]],
+    border_filt: Tuple[int, int] = (1, 5),
+    svd_filt: int = 10,
+    frames: Union[List[int], None] = None,
+    n_cpus: int = 4,
+) -> nib.Nifti1Image:
+    """Unwrap phase of data weighted by magnitude data and compute field maps. This makes a call
+    to the ROMEO phase unwrapping algorithm for each frame. To learn more about ROMEO, see this paper:
+
+    Dymerska, B., Eckstein, K., Bachrata, B., Siow, B., Trattnig, S., Shmueli, K., Robinson, S.D., 2020.
+    Phase Unwrapping with a Rapid Opensource Minimum Spanning TreE AlgOrithm (ROMEO).
+    Magnetic Resonance in Medicine. https://doi.org/10.1002/mrm.28563
+
+    Parameters
+    ----------
+    phase : List[nib.Nifti1Image]
+        Phases to unwrap
+    mag : List[nib.Nifti1Image]
+        Magnitudes associated with each phase
+    TEs : Union[List[float], Tuple[float], npt.NDArray[np.float32]]
+        Echo times associated with each phase (in ms)
+    mask : nib.Nifti1Image, optional
+        Boolean mask, by default None
+    automask : bool, optional
+        Automatically generate a mask (ignore mask option), by default True
+    border_size : int, optional
+        Size of border in automask, by default 5
+    border_filt : Tuple[int, int], optional
+        Number of SVD components for each step of border filtering, by default (1, 5)
+    svd_filt : int, optional
+        Number of SVD components to use for filtering of field maps, by default 30
+    frames : List[int], optional
+        Only process these frame indices, by default None (which means all frames)
+    n_cpus : int, optional
+        Number of CPUs to use, by default 4
+    debug : bool, optional
+        Debug mode, by default False
+
+    Returns
+    -------
+    nib.Nifti1Image
+        Field maps in Hz
+    """
+    n_frames = img.shape[3]
+    field_maps = np.zeros((*img.shape[:3], n_frames), dtype=np.float32)
+
     # compute field maps on temporally consistent unwrapped phase
     def field_map_iterator(field_maps, unwrapped, mag, TEs):
-        logging.info(f"Running field map computation...")
+        logging.info("Running field map computation...")
         # convert TEs to a matrix
         TEs_mat = TEs[:, np.newaxis]
         for frame_num in range(unwrapped.shape[-1]):
@@ -817,11 +803,11 @@ def unwrap_and_compute_field_maps(
     svd_filtering(
         field_maps,
         new_masks,
-        phase[0].header.get_zooms()[0],  # type: ignore
+        img.header.get_zooms()[0],  # type: ignore
         n_frames,
         border_filt,
         svd_filt,
     )
 
     # return the field map as a nifti image
-    return nib.Nifti1Image(field_maps[..., frames], phase[0].affine, phase[0].header)
+    return nib.Nifti1Image(field_maps[..., frames], img.affine, img.header)
