@@ -7,8 +7,9 @@ from functools import partial
 from pathlib import Path
 
 import nibabel as nib
+import numpy as np
 
-from warpkit.distortion import medic
+from warpkit.distortion import unwrap_phase_data
 from warpkit.scripts import epilog
 from warpkit.utilities import setup_logging
 
@@ -169,46 +170,20 @@ def unwrap_phases(
     echo_times, mag_data, phase_data = zip(*sorted(zip(echo_times, mag_data, phase_data)))
 
     # now run MEDIC's phase-unwrapping method
-    unwrap_phase_data(
+    unwrapped_phases = unwrap_phase_data(
         phase=phase_data,
         mag=mag_data,
         TEs=echo_times,
-        total_readout_time,
-        phase_encoding_direction,
-        out_prefix,
-        n_cpus,
-        debug,
-        wrap_limit,
+        total_readout_time=total_readout_time,
+        phase_encoding_direction=phase_encoding_direction,
+        out_prefix=out_prefix,
+        n_cpus=n_cpus,
+        debug=debug,
+        wrap_limit=wrap_limit,
     )
-    if debug:
-        fmaps_native, dmaps, fmaps = medic(
-            phase_data,
-            mag_data,
-            echo_times,
-            total_readout_time,
-            phase_encoding_direction,
-            n_cpus=n_cpus,
-            border_filt=(1000, 1000),
-            svd_filt=1000,
-            debug=True,
-            wrap_limit=wrap_limit,
-        )
-    else:
-        fmaps_native, dmaps, fmaps = medic(
-            phase_data,
-            mag_data,
-            echo_times,
-            total_readout_time,
-            phase_encoding_direction,
-            n_cpus=n_cpus,
-            svd_filt=10,
-            border_size=5,
-            wrap_limit=wrap_limit,
-        )
 
     # save the fmaps and dmaps to file
     logging.info("Saving field maps and displacement maps to file...")
-    fmaps_native.to_filename(f"{out_prefix}_fieldmaps_native.nii")
-    dmaps.to_filename(f"{out_prefix}_displacementmaps.nii")
-    fmaps.to_filename(f"{out_prefix}_fieldmaps.nii")
+    for i_echo, unwrapped_phase in enumerate(unwrapped_phases):
+        unwrapped_phase.to_filename(f"{out_prefix}_echo-{i_echo + 1}_phase.nii.gz")
     logging.info("Done.")
