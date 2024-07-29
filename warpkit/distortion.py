@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple, Union
 import nibabel as nib
 import numpy as np
 
-from warpkit.unwrap import unwrap_and_compute_field_maps
+from warpkit.unwrap import unwrap_phase_data, compute_field_maps
 from warpkit.utilities import (
     check_affines,
     displacement_maps_to_field_maps,
