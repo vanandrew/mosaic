@@ -178,7 +178,7 @@ def unwrap_phases(
     echo_times, magnitude_imgs, phase_imgs = zip(*sorted(zip(echo_times, magnitude_imgs, phase_imgs)))
 
     # now run MEDIC's phase-unwrapping method
-    unwrapped_phases = unwrap_phase_data(
+    unwrapped_phases, _ = unwrap_phase_data(
         phase=phase_imgs,
         mag=magnitude_imgs,
         TEs=echo_times,
@@ -188,6 +188,9 @@ def unwrap_phases(
         debug=debug,
         wrap_limit=wrap_limit,
     )
+    unwrapped_phases = [
+        nib.Nifti1Image(ph, phase_imgs[0].affine, phase_imgs[0].header) for ph in unwrapped_phases
+    ]
 
     # save the fmaps and dmaps to file
     logging.info("Saving field maps and displacement maps to file...")

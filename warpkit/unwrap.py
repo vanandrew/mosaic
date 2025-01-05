@@ -592,7 +592,7 @@ def unwrap_phase_data(
     n_cpus: int = 4,
     debug: bool = False,
     wrap_limit: bool = False,
-) -> nib.Nifti1Image:
+) -> Tuple[nib.Nifti1Image, nib.Nifti1Image]:
     # make sure affines/shapes are all correct
     check_affines(phase, mag)
 
@@ -719,6 +719,8 @@ def unwrap_phase_data(
 
         logging.info("Saving masks..")
         nib.Nifti1Image(new_masks, phase[0].affine, phase[0].header).to_filename("masks.nii")
+
+    return unwrapped, new_masks
 
 
 def compute_field_maps(
