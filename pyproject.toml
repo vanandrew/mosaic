@@ -28,10 +28,6 @@ dev = [
   "pre-commit >= 3.6.0",
 ]
 
-[project.scripts]
-medic = "warpkit.scripts.medic:main"
-warpkit_unwrap = "warpkit.scripts.unwrap_phase:main"
-
 [build-system]
 requires = ["setuptools", "wheel", "cmake >= 3.24", "cmake-build-extension >= 0.5.1"]
 build-backend = "setuptools.build_meta"
