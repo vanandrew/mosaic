@@ -3,8 +3,9 @@ from typing import List, Optional, Tuple, Union
 import nibabel as nib
 import numpy as np
 
-from warpkit.unwrap import unwrap_and_compute_field_maps
+from warpkit.unwrap import unwrap_phase_data, compute_field_maps
 from warpkit.utilities import (
+    check_affines,
     displacement_maps_to_field_maps,
     field_maps_to_displacement_maps,
     invert_displacement_maps,
@@ -69,36 +70,31 @@ def medic(
     nib.Nifti1Image
         Field maps in Hz (undistorted space)
     """
-    # make sure affines/shapes are all correct
-    for p1, m1 in zip(phase, mag):
-        for p2, m2 in zip(phase, mag):
-            if not (
-                np.allclose(p1.affine, p2.affine, rtol=1e-3, atol=1e-3)
-                and np.allclose(m1.affine, m2.affine, rtol=1e-3, atol=1e-3)
-                and p1.shape == p2.shape
-                and m1.shape == m2.shape
-            ):
-                print(p1.affine, p2.affine)
-                print(p1.affine - p2.affine)
-                print(p1.shape, p2.shape)
-                print(m1.affine, m2.affine)
-                print(m1.affine - m2.affine)
-                print(m1.shape, m2.shape)
-                raise ValueError("Affines and shapes must match")
+    check_affines(phase, mag)
 
     # unwrap phase and compute field maps
     try:
-        field_maps_native = unwrap_and_compute_field_maps(
+        unwrapped, new_masks = unwrap_phase_data(
             phase,
             mag,
             TEs,
+            automask=True,
             border_size=border_size,
-            border_filt=border_filt,
-            svd_filt=svd_filt,
             frames=frames,
             n_cpus=n_cpus,
             debug=debug,
             wrap_limit=wrap_limit,
+        )
+        field_maps_native = compute_field_maps(
+            unwrapped=unwrapped,
+            new_masks=new_masks,
+            img=phase[0],
+            mag=mag,
+            TEs=TEs,
+            border_filt=border_filt,
+            svd_filt=svd_filt,
+            frames=frames,
+            n_cpus=n_cpus,
         )
     except IndexError as e:
         raise IndexError(
