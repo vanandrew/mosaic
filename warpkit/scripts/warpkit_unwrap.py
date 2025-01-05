@@ -154,8 +154,6 @@ def unwrap_phases(
 
     # check if data is 4D or 3D
     if phase_imgs[0].ndim == 3:
-        # set total number of frames to 1
-        n_frames = 1
         # convert data to 4D
         phase_imgs = [
             nib.Nifti1Image(p.get_fdata()[..., np.newaxis], p.affine, p.header) for p in phase_imgs
@@ -163,9 +161,6 @@ def unwrap_phases(
         magnitude_imgs = [
             nib.Nifti1Image(m.get_fdata()[..., np.newaxis], m.affine, m.header) for m in magnitude_imgs
         ]
-    elif phase_imgs[0].ndim == 4:
-        # get the total number of frames
-        n_frames = phase_imgs[0].shape[3]
     else:
         raise ValueError("Data must be 3D or 4D.")
 
