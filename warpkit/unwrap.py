@@ -171,22 +171,13 @@ def mcpc_3d_s(
                 new_proposed_fieldmap, new_proposed_unwrapped_phases = get_dual_echo_fieldmap(
                     new_proposed_phases, TEs, mags, mask
                 )
-                new_voxel_prop = (
-                    np.count_nonzero(new_proposed_fieldmap[voxel_mask] > 0) / new_proposed_fieldmap[voxel_mask].shape[0]
-                )
+
                 # fit linear model to the proposed phases
                 new_phase_fits = np.concatenate(
                     (np.zeros((*new_proposed_unwrapped_phases.shape[:-1], 1)), new_proposed_unwrapped_phases), axis=-1
                 )
                 _, residuals_2, _, _, _ = np.polyfit(all_TEs, new_phase_fits[voxel_mask, :].T, 1, full=True)
-                # print(f"mean_proposed_fieldmap 1: {proposed_fieldmap[voxel_mask].mean()}")
-                # print(f"voxel_prop 1 : {voxel_prop}")
-                # print(f"mean_residuals 1: {residuals_1.mean()}")
-                # print(f"mean_phase_offset 1: {mean_phase_offset}")
-                # print(f"proposed_fieldmap 2: {new_proposed_fieldmap[voxel_mask].mean()}")
-                # print(f"voxel_prop 2: {new_voxel_prop}")
-                # print(f"mean_residuals 2: {residuals_2.mean()}")
-                # print(f"mean_phase_offset 2: {new_proposed_offset.mean()}")
+
                 if (
                     np.isclose(residuals_1.mean(), residuals_2.mean(), atol=1e-3, rtol=1e-3)
                     and new_proposed_fieldmap[voxel_mask].mean() > 0
@@ -616,7 +607,11 @@ def unwrap_phase_data(
     TEs = cast(npt.NDArray[np.float32], np.array(TEs))
 
     # frames should be a list at this point
-    frames = cast(List[int], frames)
+    if frames is None:
+        frames = list(range(phase[0].shape[3]))
+    else:
+        frames = cast(List[int], frames)
+    n_frames = len(frames)
 
     # check echo times = number of mag and phase images
     if len(TEs) != len(phase) or len(TEs) != len(mag):
