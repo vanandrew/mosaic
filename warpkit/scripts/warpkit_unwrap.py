@@ -116,9 +116,10 @@ def unwrap_phases(
     metadata,
     out_prefix,
     noiseframes,
-    n_cpus,
-    debug,
-    wrap_limit,
+    border_size=5,
+    n_cpus=1,
+    debug=False,
+    wrap_limit=False,
 ):
     """Unwrap multi-echo phase data.
 
@@ -135,6 +136,8 @@ def unwrap_phases(
     noiseframes : int
         Number of noise frames at the end of the run.
         Noise frames will be removed before unwrapping is performed.
+    border_size : int, optional
+        Size of border in automask, by default 5
     n_cpus : int
         Number of CPUs to use.
     debug : bool
@@ -166,22 +169,10 @@ def unwrap_phases(
 
     # get metadata
     echo_times = []
-    total_readout_time = None
-    phase_encoding_direction = None
-    for i_run, json_file in enumerate(metadata):
+    for json_file in metadata:
         with open(json_file, "r") as fobj:
             metadata_dict = json.load(fobj)
             echo_times.append(metadata_dict["EchoTime"] * 1000)  # convert TE from s to ms
-
-        if i_run == 0:
-            total_readout_time = metadata_dict.get("TotalReadoutTime")
-            phase_encoding_direction = metadata_dict.get("PhaseEncodingDirection")
-
-    if total_readout_time is None:
-        raise ValueError("Could not find 'TotalReadoutTime' field in metadata.")
-
-    if phase_encoding_direction is None:
-        raise ValueError("Could not find 'PhaseEncodingDirection' field in metadata.")
 
     # Sort the echo times and data by echo time
     echo_times, magnitude_imgs, phase_imgs = zip(*sorted(zip(echo_times, magnitude_imgs, phase_imgs)))
@@ -191,9 +182,8 @@ def unwrap_phases(
         phase=phase_imgs,
         mag=magnitude_imgs,
         TEs=echo_times,
-        total_readout_time=total_readout_time,
-        phase_encoding_direction=phase_encoding_direction,
-        out_prefix=out_prefix,
+        automask=True,
+        border_size=border_size,
         n_cpus=n_cpus,
         debug=debug,
         wrap_limit=wrap_limit,
