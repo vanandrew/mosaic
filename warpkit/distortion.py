@@ -79,7 +79,6 @@ def medic(
             mag,
             TEs,
             border_size=border_size,
-            border_filt=border_filt,
             svd_filt=svd_filt,
             frames=frames,
             n_cpus=n_cpus,
