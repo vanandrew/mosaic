@@ -774,6 +774,9 @@ def compute_field_maps(
     n_frames = img.shape[3]
     field_maps = np.zeros((*img.shape[:3], n_frames), dtype=np.float32)
 
+    # convert TEs to np array
+    TEs = cast(npt.NDArray[np.float32], np.array(TEs))
+
     # compute field maps on temporally consistent unwrapped phase
     def field_map_iterator(field_maps, unwrapped, mag, TEs):
         logging.info("Running field map computation...")
