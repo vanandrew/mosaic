@@ -608,7 +608,8 @@ def unwrap_phase_data(
     # check TEs if < 0.1, tell user they probably need to convert to ms
     if np.min(TEs) < 0.1:
         logging.warning(
-            "WARNING: TEs are unusually small. Your inputs may be incorrect. Did you forget to convert to ms?"
+            "WARNING: TEs are unusually small. Your inputs may be incorrect. "
+            "Did you forget to convert to ms?"
         )
 
     # convert TEs to np array

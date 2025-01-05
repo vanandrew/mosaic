@@ -120,30 +120,52 @@ def unwrap_phases(
     debug,
     wrap_limit,
 ):
+    """Unwrap multi-echo phase data.
 
+    Parameters
+    ----------
+    magnitude : list of str
+        List of magnitude data files.
+    phase : list of str
+        List of phase data files.
+    metadata : list of str
+        List of JSON sidecar files for each echo.
+    out_prefix : str
+        Prefix to output field maps and displacment maps.
+    noiseframes : int
+        Number of noise frames at the end of the run.
+        Noise frames will be removed before unwrapping is performed.
+    n_cpus : int
+        Number of CPUs to use.
+    debug : bool
+        Debug mode.
+    wrap_limit : bool
+        Turns off some heuristics for phase unwrapping.
+    """
     # load magnitude and phase data
-    mag_data = [nib.load(m) for m in magnitude]
-    phase_data = [nib.load(p) for p in phase]
+    magnitude_imgs = [nib.load(m) for m in magnitude]
+    phase_imgs = [nib.load(p) for p in phase]
 
     # if noiseframes specified, remove them
     if noiseframes > 0:
         logging.info(f"Removing {noiseframes} noise frames from the end of the run...")
-        mag_data = [m.slicer[..., : -noiseframes] for m in mag_data]
-        phase_data = [p.slicer[..., : -noiseframes] for p in phase_data]
+        magnitude_imgs = [m.slicer[..., : -noiseframes] for m in magnitude_imgs]
+        phase_imgs = [p.slicer[..., : -noiseframes] for p in phase_imgs]
 
     # check if data is 4D or 3D
-    if len(phase[0].shape) == 3:
+    if phase_imgs[0].ndim == 3:
         # set total number of frames to 1
         n_frames = 1
         # convert data to 4D
-        phase = [nib.Nifti1Image(p.get_fdata()[..., np.newaxis], p.affine, p.header) for p in phase]
-        mag = [nib.Nifti1Image(m.get_fdata()[..., np.newaxis], m.affine, m.header) for m in mag]
-    elif len(phase[0].shape) == 4:
-        # if frames is None, set it to all frames
-        if frames is None:
-            frames = list(range(phase[0].shape[-1]))
+        phase_imgs = [
+            nib.Nifti1Image(p.get_fdata()[..., np.newaxis], p.affine, p.header) for p in phase_imgs
+        ]
+        magnitude_imgs = [
+            nib.Nifti1Image(m.get_fdata()[..., np.newaxis], m.affine, m.header) for m in magnitude_imgs
+        ]
+    elif phase_imgs[0].ndim == 4:
         # get the total number of frames
-        n_frames = len(frames)
+        n_frames = phase_imgs[0].shape[3]
     else:
         raise ValueError("Data must be 3D or 4D.")
 
@@ -167,12 +189,12 @@ def unwrap_phases(
         raise ValueError("Could not find 'PhaseEncodingDirection' field in metadata.")
 
     # Sort the echo times and data by echo time
-    echo_times, mag_data, phase_data = zip(*sorted(zip(echo_times, mag_data, phase_data)))
+    echo_times, magnitude_imgs, phase_imgs = zip(*sorted(zip(echo_times, magnitude_imgs, phase_imgs)))
 
     # now run MEDIC's phase-unwrapping method
     unwrapped_phases = unwrap_phase_data(
-        phase=phase_data,
-        mag=mag_data,
+        phase=phase_imgs,
+        mag=magnitude_imgs,
         TEs=echo_times,
         total_readout_time=total_readout_time,
         phase_encoding_direction=phase_encoding_direction,
